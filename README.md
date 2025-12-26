@@ -1,0 +1,1 @@
+# smart-repository-manager-core
