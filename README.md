@@ -1,8 +1,21 @@
-# Smart Repository Manager Core <sup>v0.1.0</sup>
+# Smart Repository Manager Core <sup>v0.1.1</sup>
 
 ---
 
 A Python library for managing Git repositories with intelligent synchronization, SSH configuration validation, and GitHub integration.
+
+---
+
+[![PyPI - Downloads](https://img.shields.io/pypi/dm/smart-repository-manager-core?label=pypi%20downloads)](https://pypi.org/project/smart-repository-manager-core/)
+[![GitHub release (latest by date)](https://img.shields.io/github/v/release/smartlegionlab/smart-repository-manager-core)](https://github.com/smartlegionlab/smart-repository-manager-core/)
+![GitHub top language](https://img.shields.io/github/languages/top/smartlegionlab/smart-repository-manager-core)
+[![PyPI](https://img.shields.io/pypi/v/smart-repository-manager-core)](https://pypi.org/project/smart-repository-manager-core)
+[![GitHub](https://img.shields.io/github/license/smartlegionlab/smart-repository-manager-core)](https://github.com/smartlegionlab/smart-repository-manager-core/blob/master/LICENSE)
+[![PyPI - Format](https://img.shields.io/pypi/format/smart-repository-manager-core)](https://pypi.org/project/smart-repository-manager-core)
+[![GitHub stars](https://img.shields.io/github/stars/smartlegionlab/smart-repository-manager-core?style=social)](https://github.com/smartlegionlab/smart-repository-manager-core/stargazers)
+[![GitHub forks](https://img.shields.io/github/forks/smartlegionlab/smart-repository-manager-core?style=social)](https://github.com/smartlegionlab/smart-repository-manager-core/network/members)
+
+---
 
 ## Features
 
