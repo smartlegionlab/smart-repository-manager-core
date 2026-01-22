@@ -111,7 +111,8 @@ class StructureService:
                         "size_bytes": size,
                         "size_mb": size / (1024 * 1024)
                     }
-                except Exception:
+                except Exception as e:
+                    print(e)
                     info[name] = {
                         "path": str(path),
                         "exists": True,

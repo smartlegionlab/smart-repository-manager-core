@@ -36,7 +36,8 @@ class SyncResult:
         }
 
     def __str__(self) -> str:
-        return f"SyncResult(success={self.successful}, failed={self.failed}, repaired={self.repaired}, duration={Helpers.format_duration(self.duration)})"
+        return (f"SyncResult(success={self.successful}, failed={self.failed}, "
+                f"repaired={self.repaired}, duration={Helpers.format_duration(self.duration)})")
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -74,7 +75,8 @@ class SyncService:
             for callback in self._callbacks[event]:
                 try:
                     callback(*args, **kwargs)
-                except Exception:
+                except Exception as e:
+                    print(e)
                     pass
 
     def sync_user_repositories(
@@ -145,6 +147,8 @@ class SyncService:
                 else:
                     result.successful += 1
                     self._emit("repo_completed", repo, success, message, attempts)
+                repo.need_update = False
+                repo.local_exists = True
             else:
                 result.failed += 1
                 result.failed_repos[repo.name] = f"{message} (attempts: {attempts})"
@@ -429,7 +433,8 @@ class SyncService:
             )
 
             return result1.returncode == 0 and result2.returncode == 0
-        except Exception:
+        except Exception as e:
+            print(e)
             return False
 
     def _cleanup_repository(self, repo_path: Path) -> bool:
@@ -437,7 +442,8 @@ class SyncService:
             if repo_path.exists():
                 shutil.rmtree(repo_path, ignore_errors=True)
             return True
-        except Exception:
+        except Exception as e:
+            print(e)
             return False
 
     def sync_single_repository(
@@ -470,6 +476,11 @@ class SyncService:
             repo.name,
             auto_repair
         )
+
+        if success:
+            repo.need_update = False
+            repo.local_exists = True
+
         duration = time.time() - start_time
 
         return success, message, duration

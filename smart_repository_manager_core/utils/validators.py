@@ -1,3 +1,4 @@
+# Copyright (©) 2025, Alexander Suvorov. All rights reserved.
 from typing import Optional, Tuple
 from datetime import datetime
 from pathlib import Path
@@ -57,5 +58,6 @@ class Validators:
                 date_str = date_str.replace('Z', '+00:00')
             datetime.fromisoformat(date_str)
             return True
-        except Exception:
+        except Exception as e:
+            print(e)
             return False

@@ -16,6 +16,9 @@ class AppConfig:
         if self.last_launch is None:
             self.last_launch = datetime.now().isoformat()
 
+    def set_version(self, version: str = "1.0.0"):
+        self.version = str(version)
+
     def add_user(self, username: str, token: str) -> None:
         self.users[username] = token
 

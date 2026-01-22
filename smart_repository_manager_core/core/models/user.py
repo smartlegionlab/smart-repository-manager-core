@@ -28,7 +28,8 @@ class User:
         try:
             dt = datetime.fromisoformat(self.created_at.replace('Z', '+00:00'))
             return dt.strftime("%Y-%m-%d")
-        except Exception:
+        except Exception as e:
+            print(e)
             return "Invalid date"
 
     def update_from_api(self, api_data: Dict[str, Any]) -> None:

@@ -35,6 +35,7 @@ class Repository:
     ssh_url: Optional[str] = None
     clone_url: Optional[str] = None
     local_exists: bool = False
+    need_update: bool = True
 
     def __str__(self) -> str:
         return f"Repository(name={self.name}, private={self.private})"
@@ -66,7 +67,7 @@ class Repository:
         return self.size / 1024
 
     @property
-    def license_name(self) -> str:
+    def license_name(self):
         if self.license and 'name' in self.license:
             return self.license['name']
         return "None"
@@ -117,7 +118,8 @@ class Repository:
             "homepage": self.homepage,
             "ssh_url": self.ssh_url,
             "clone_url": self.clone_url,
-            "local_exists": self.local_exists
+            "local_exists": self.local_exists,
+            "need_update": self.need_update
         }
 
     @classmethod
@@ -150,5 +152,6 @@ class Repository:
             homepage=data.get('homepage'),
             ssh_url=data.get('ssh_url'),
             clone_url=data.get('clone_url'),
-            local_exists=data.get('local_exists', False)
+            local_exists=data.get('local_exists', False),
+            need_update=data.get('need_update', True)
         )

@@ -1,3 +1,4 @@
+# Copyright (©) 2025, Alexander Suvorov. All rights reserved.
 import json
 import shutil
 from pathlib import Path
@@ -11,7 +12,8 @@ class FileOperations:
         try:
             path.mkdir(parents=True, exist_ok=True)
             return True
-        except Exception:
+        except Exception as e:
+            print(e)
             return False
 
     @staticmethod
@@ -22,7 +24,8 @@ class FileOperations:
             with open(path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
             return data, True
-        except Exception:
+        except Exception as e:
+            print(e)
             return None, False
 
     @staticmethod
@@ -34,7 +37,8 @@ class FileOperations:
                 json.dump(data, f, indent=2, ensure_ascii=False)
             shutil.move(temp, path)
             return True
-        except Exception:
+        except Exception as e:
+            print(e)
             return False
 
     @staticmethod
@@ -46,7 +50,8 @@ class FileOperations:
                 elif path.is_dir():
                     shutil.rmtree(path)
             return True
-        except Exception:
+        except Exception as e:
+            print(e)
             return False
 
     @staticmethod
@@ -54,5 +59,6 @@ class FileOperations:
         try:
             shutil.copy2(source, destination)
             return True
-        except Exception:
+        except Exception as e:
+            print(e)
             return False

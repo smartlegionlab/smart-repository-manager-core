@@ -1,3 +1,4 @@
+# Copyright (©) 2025, Alexander Suvorov. All rights reserved.
 from datetime import datetime, timezone, timedelta
 from typing import Dict, List
 

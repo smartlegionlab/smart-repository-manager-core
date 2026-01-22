@@ -1,7 +1,8 @@
 # Copyright (©) 2025, Alexander Suvorov. All rights reserved.
+import ipaddress
 import socket
 import requests
-from typing import Dict, Any, Tuple, List
+from typing import Dict, Any, Tuple, List, Optional
 from urllib.parse import urlparse
 from datetime import datetime
 
@@ -296,3 +297,43 @@ class NetworkService:
             return False, "Timeout"
         except Exception as e:
             return False, str(e)
+
+    def get_external_ip(self) -> Optional[str]:
+        ip_services = [
+            "https://api.ipify.org",
+            "https://icanhazip.com",
+            "https://ident.me",
+            "https://checkip.amazonaws.com",
+            "https://ifconfig.me/ip"
+        ]
+
+        for service in ip_services:
+            try:
+                response = requests.get(service, timeout=3)
+                if response.status_code == 200:
+                    ip = response.text.strip()
+                    if self.is_valid_ip(ip):
+                        return ip
+            except Exception as e:
+                print(e)
+                continue
+
+        try:
+            hostname = socket.gethostname()
+            ip_address = socket.gethostbyname(hostname)
+            if self.is_valid_ip(ip_address):
+                return f"{ip_address} (local)"
+        except Exception as e:
+            print(e)
+            pass
+
+        return None
+
+    @staticmethod
+    def is_valid_ip(ip: str) -> bool:
+        try:
+            clean_ip = ip.split(' ')[0]
+            ipaddress.ip_address(clean_ip)
+            return True
+        except ValueError:
+            return False
