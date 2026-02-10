@@ -58,6 +58,12 @@ class NetworkService:
     def __init__(self, timeout: int = 3, check_servers: List[Dict[str, str]] = None):
         self.timeout = timeout
         self.check_servers = check_servers or self.DEFAULT_CHECK_SERVERS
+        self.ip_services = [
+            "https://api.ipify.org",
+            "https://icanhazip.com",
+            "https://checkip.amazonaws.com",
+            "https://ifconfig.me/ip",
+        ]
 
     def check_network(self) -> NetworkCheckResult:
         import time
@@ -299,15 +305,8 @@ class NetworkService:
             return False, str(e)
 
     def get_external_ip(self) -> Optional[str]:
-        ip_services = [
-            "https://api.ipify.org",
-            "https://icanhazip.com",
-            "https://ident.me",
-            "https://checkip.amazonaws.com",
-            "https://ifconfig.me/ip"
-        ]
 
-        for service in ip_services:
+        for service in self.ip_services:
             try:
                 response = requests.get(service, timeout=3)
                 if response.status_code == 200:
@@ -326,6 +325,20 @@ class NetworkService:
         except Exception as e:
             print(e)
             pass
+
+        return None
+
+    def get_ip(self):
+
+        for service in self.ip_services:
+            try:
+                response = requests.get(service, timeout=3)
+                if response.status_code == 200:
+                    ip = response.text.strip()
+                    return ip
+            except Exception as e:
+                print(e)
+                continue
 
         return None
 
