@@ -12,7 +12,7 @@ class StructureService:
 
     def __init__(self, base_dir: Optional[Path] = None):
         if base_dir is None:
-            self.base_dir = Path.home() / "smart_repo_manager"
+            self.base_dir = Path.home() / "smart_repository_manager"
         else:
             self.base_dir = base_dir
 

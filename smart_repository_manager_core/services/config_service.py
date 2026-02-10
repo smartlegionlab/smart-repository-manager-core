@@ -10,7 +10,7 @@ class ConfigService:
 
     def __init__(self, config_path: Optional[Path] = None):
         if config_path is None:
-            self.config_path = Path.home() / "smart_repo_manager" / "config.json"
+            self.config_path = Path.home() / "smart_repository_manager" / "config.json"
         else:
             self.config_path = config_path
 
