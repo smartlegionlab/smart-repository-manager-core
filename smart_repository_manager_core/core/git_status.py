@@ -43,7 +43,6 @@ class GitStatusChecker:
     @staticmethod
     def needs_update(repo_path: Path, github_pushed_at: str) -> bool:
         try:
-
             if not repo_path.exists() or not (repo_path / '.git').exists():
                 return True
 
@@ -65,9 +64,6 @@ class GitStatusChecker:
 
             if diff_seconds <= 300:
                 return False
-
-            if diff_seconds > 86400:
-                return True
 
             remote_result = subprocess.run(
                 ['git', '-C', str(repo_path), 'ls-remote', 'origin', 'HEAD'],
@@ -99,10 +95,7 @@ class GitStatusChecker:
 
             local_hash = local_hash_result.stdout.strip()
 
-            if local_hash == remote_hash:
-                return False
-            else:
-                return True
+            return local_hash != remote_hash
 
         except Exception:
             return True

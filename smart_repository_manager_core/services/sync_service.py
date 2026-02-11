@@ -511,8 +511,6 @@ class SyncService:
         if not repositories:
             return {}
 
-        start_time = time.time()
-
         structure = self.structure_service.get_user_structure(user.username)
         if "repositories" not in structure:
             return {repo.name: (True, "Directory structure not found") for repo in repositories}
@@ -521,7 +519,6 @@ class SyncService:
         results = {}
 
         repos_to_check = []
-
         for repo in repositories:
             repo_path = repos_path / repo.name
 
@@ -539,74 +536,34 @@ class SyncService:
 
             repos_to_check.append((repo, repo_path))
 
-
         if not repos_to_check:
             return results
 
-        network_check_repos = []
-
         with ThreadPoolExecutor(max_workers=min(10, len(repos_to_check))) as executor:
             future_to_repo = {}
+
             for repo, repo_path in repos_to_check:
-                future = executor.submit(self._perform_fast_date_check, repo, repo_path)
-                future_to_repo[future] = (repo.name, repo_path)
+                future = executor.submit(
+                    GitStatusChecker.needs_update,
+                    repo_path,
+                    repo.pushed_at
+                )
+                future_to_repo[future] = repo.name
 
             for future in concurrent.futures.as_completed(future_to_repo):
-                repo_name, repo_path = future_to_repo[future]
+                repo_name = future_to_repo[future]
                 try:
-                    needs_network_check, message = future.result(timeout=5)
+                    needs_update = future.result(timeout=30)
 
-                    if needs_network_check:
-                        repo_obj = next(r for r in repositories if r.name == repo_name)
-                        network_check_repos.append((repo_obj, repo_path))
+                    if needs_update:
+                        results[repo_name] = (True, "Update needed")
                     else:
-                        results[repo_name] = (False, message)
+                        results[repo_name] = (False, "Up to date")
 
-                except Exception:
-                    repo_obj = next(r for r in repositories if r.name == repo_name)
-                    network_check_repos.append((repo_obj, repo_path))
+                except Exception as e:
+                    results[repo_name] = (True, f"Check failed: {str(e)}")
 
-
-        if network_check_repos:
-
-            with ThreadPoolExecutor(max_workers=min(3, len(network_check_repos))) as executor:
-                future_to_repo = {}
-                for repo, repo_path in network_check_repos:
-                    future = executor.submit(self._perform_network_commit_check, repo, repo_path)
-                    future_to_repo[future] = repo.name
-
-                for future in concurrent.futures.as_completed(future_to_repo):
-                    repo_name = future_to_repo[future]
-                    try:
-                        needs_update, message = future.result(timeout=15)
-                        results[repo_name] = (needs_update, message)
-                    except Exception as e:
-                        results[repo_name] = (True, f"Error: {str(e)}")
         return results
-
-    def _perform_fast_date_check(self, repo: Repository, repo_path: Path) -> Tuple[bool, str]:
-        try:
-            needs_update = GitStatusChecker.needs_update(repo_path, repo.pushed_at)
-
-            if needs_update:
-                return True, "Needs precise check"
-            else:
-                return False, "Up to date (fast check)"
-
-        except Exception as e:
-            return True, f"Error"
-
-    def _perform_network_commit_check(self, repo: Repository, repo_path: Path) -> Tuple[bool, str]:
-        try:
-            needs_update = GitStatusChecker.needs_update(repo_path, repo.pushed_at)
-
-            if needs_update:
-                return True, "Different commits"
-            else:
-                return False, "Up to date (same commit)"
-
-        except Exception as e:
-            return True, f"Error"
 
     def get_repository_health(
             self,
