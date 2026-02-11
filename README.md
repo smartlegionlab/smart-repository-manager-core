@@ -1,4 +1,4 @@
-# Smart Repository Manager Core <sup>v0.2.3</sup>
+# Smart Repository Manager Core <sup>v0.2.4</sup>
 
 ---
 
@@ -39,6 +39,7 @@ pip install smart-repository-manager-core
 - Pull updates with health verification
 - Automatic repair of broken repositories
 - Repository health diagnostics
+- Create repositories archive
 
 ### SSH Management
 - SSH key validation and permissions checking

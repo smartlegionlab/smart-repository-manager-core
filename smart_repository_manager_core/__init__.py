@@ -1,7 +1,7 @@
-# Copyright (©) 2025, Alexander Suvorov. All rights reserved.
+# Copyright (©) 2026, Alexander Suvorov. All rights reserved.
 """
 Smart Repository Manager Core
 """
 
-__version__ = "0.2.3"
+__version__ = "0.2.4"
 __author__ = "Alexander Suvorov"
