@@ -1,4 +1,4 @@
-# Smart Repository Manager Core <sup>v0.2.4</sup>
+# Smart Repository Manager Core <sup>v0.2.5</sup>
 
 ---
 

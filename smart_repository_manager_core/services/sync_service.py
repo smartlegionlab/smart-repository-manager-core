@@ -6,6 +6,9 @@ from pathlib import Path
 from typing import List, Dict, Optional, Callable, Any, Tuple
 from datetime import datetime
 
+import concurrent.futures
+from concurrent.futures import ThreadPoolExecutor
+
 from smart_repository_manager_core.core.git_status import GitStatusChecker
 from smart_repository_manager_core.core.models.repository import Repository
 from smart_repository_manager_core.core.models.user import User
@@ -490,31 +493,120 @@ class SyncService:
             user: User,
             repo: Repository
     ) -> Tuple[bool, str]:
-        if not repo.ssh_url:
-            return False, "No SSH URL"
+        results = self._batch_check_needs_update_internal(user, [repo])
+        return results.get(repo.name, (True, "Error checking"))
+
+    def batch_check_repositories_need_update(
+            self,
+            user: User,
+            repositories: List[Repository]
+    ) -> Dict[str, Tuple[bool, str]]:
+        return self._batch_check_needs_update_internal(user, repositories)
+
+    def _batch_check_needs_update_internal(
+            self,
+            user: User,
+            repositories: List[Repository]
+    ) -> Dict[str, Tuple[bool, str]]:
+        if not repositories:
+            return {}
+
+        start_time = time.time()
 
         structure = self.structure_service.get_user_structure(user.username)
         if "repositories" not in structure:
-            return True, "Repository not found locally"
+            return {repo.name: (True, "Directory structure not found") for repo in repositories}
 
-        repo_path = structure["repositories"] / repo.name
+        repos_path = structure["repositories"]
+        results = {}
 
-        health_status = self._check_repository_health(repo, structure["repositories"])
-        if health_status["status"] in ["broken", "not_exists"]:
-            return True, "Repository is broken or doesn't exist"
+        repos_to_check = []
 
-        if not repo_path.exists() or not (repo_path / '.git').exists():
-            return True, "Repository not found locally"
+        for repo in repositories:
+            repo_path = repos_path / repo.name
 
-        if not repo.pushed_at:
-            return False, "Unknown remote status"
+            if not repo.ssh_url:
+                results[repo.name] = (False, "No SSH URL")
+                continue
 
-        needs_update = GitStatusChecker.needs_update(repo_path, repo.pushed_at)
+            if not repo_path.exists() or not (repo_path / '.git').exists():
+                results[repo.name] = (True, "Repository not found locally")
+                continue
 
-        if needs_update:
-            return True, "Needs update"
-        else:
-            return False, "Up to date"
+            if not repo.pushed_at:
+                results[repo.name] = (False, "Unknown remote status")
+                continue
+
+            repos_to_check.append((repo, repo_path))
+
+
+        if not repos_to_check:
+            return results
+
+        network_check_repos = []
+
+        with ThreadPoolExecutor(max_workers=min(10, len(repos_to_check))) as executor:
+            future_to_repo = {}
+            for repo, repo_path in repos_to_check:
+                future = executor.submit(self._perform_fast_date_check, repo, repo_path)
+                future_to_repo[future] = (repo.name, repo_path)
+
+            for future in concurrent.futures.as_completed(future_to_repo):
+                repo_name, repo_path = future_to_repo[future]
+                try:
+                    needs_network_check, message = future.result(timeout=5)
+
+                    if needs_network_check:
+                        repo_obj = next(r for r in repositories if r.name == repo_name)
+                        network_check_repos.append((repo_obj, repo_path))
+                    else:
+                        results[repo_name] = (False, message)
+
+                except Exception:
+                    repo_obj = next(r for r in repositories if r.name == repo_name)
+                    network_check_repos.append((repo_obj, repo_path))
+
+
+        if network_check_repos:
+
+            with ThreadPoolExecutor(max_workers=min(3, len(network_check_repos))) as executor:
+                future_to_repo = {}
+                for repo, repo_path in network_check_repos:
+                    future = executor.submit(self._perform_network_commit_check, repo, repo_path)
+                    future_to_repo[future] = repo.name
+
+                for future in concurrent.futures.as_completed(future_to_repo):
+                    repo_name = future_to_repo[future]
+                    try:
+                        needs_update, message = future.result(timeout=15)
+                        results[repo_name] = (needs_update, message)
+                    except Exception as e:
+                        results[repo_name] = (True, f"Error: {str(e)}")
+        return results
+
+    def _perform_fast_date_check(self, repo: Repository, repo_path: Path) -> Tuple[bool, str]:
+        try:
+            needs_update = GitStatusChecker.needs_update(repo_path, repo.pushed_at)
+
+            if needs_update:
+                return True, "Needs precise check"
+            else:
+                return False, "Up to date (fast check)"
+
+        except Exception as e:
+            return True, f"Error"
+
+    def _perform_network_commit_check(self, repo: Repository, repo_path: Path) -> Tuple[bool, str]:
+        try:
+            needs_update = GitStatusChecker.needs_update(repo_path, repo.pushed_at)
+
+            if needs_update:
+                return True, "Different commits"
+            else:
+                return False, "Up to date (same commit)"
+
+        except Exception as e:
+            return True, f"Error"
 
     def get_repository_health(
             self,
