@@ -25,6 +25,7 @@ class StructureService:
                 "user": user_dir,
                 "repositories": user_dir / "repositories",
                 "archives": user_dir / "archives",
+                "downloads": user_dir / "downloads",
                 "logs": user_dir / "logs",
                 "backups": user_dir / "backups",
                 "temp": user_dir / "temp"
@@ -52,6 +53,7 @@ class StructureService:
             "user": user_dir,
             "repositories": user_dir / "repositories",
             "archives": user_dir / "archives",
+            "downloads": user_dir / "downloads",
             "logs": user_dir / "logs",
             "backups": user_dir / "backups",
             "temp": user_dir / "temp"
