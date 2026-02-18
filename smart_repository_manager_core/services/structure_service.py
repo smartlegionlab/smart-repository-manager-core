@@ -163,6 +163,7 @@ User: {username}
 {username}/
 ├── repositories/ # Local clones of Git repositories
 ├── archives/    # Backup archives and snapshots
+├── downloads/    # Local downloaded repositories
 ├── logs/        # Operation logs
 ├── backups/     # Manual backups
 └── temp/        # Temporary files (auto-cleaned)
