@@ -19,7 +19,7 @@ A Python library for managing Git repositories with intelligent synchronization,
 
 ## Features
 
-- **Repository Management**: Clone, pull, and sync GitHub repositories with intelligent health checks
+- **Repository Management**: Clone, pull, download and sync GitHub repositories with intelligent health checks
 - **SSH Configuration**: Automatic SSH key validation and configuration for GitHub
 - **User Management**: Multiple user profiles with GitHub token authentication
 - **Network Diagnostics**: Comprehensive connectivity checks and network validation
