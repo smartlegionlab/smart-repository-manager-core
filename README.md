@@ -1,4 +1,4 @@
-# Smart Repository Manager Core <sup>v0.3.1</sup>
+# Smart Repository Manager Core <sup>v0.3.2</sup>
 
 ---
 
@@ -19,7 +19,7 @@ A Python library for managing Git repositories with intelligent synchronization,
 
 ## Features
 
-- **Repository Management**: Clone, pull, download and sync GitHub repositories with intelligent health checks
+- **Repository Management**: Clone, pull, parallel download and sync GitHub repositories with intelligent health checks
 - **SSH Configuration**: Automatic SSH key validation and configuration for GitHub
 - **User Management**: Multiple user profiles with GitHub token authentication
 - **Network Diagnostics**: Comprehensive connectivity checks and network validation
@@ -40,6 +40,7 @@ pip install smart-repository-manager-core
 - Automatic repair of broken repositories
 - Repository health diagnostics
 - Create repositories archive
+- Downloading repositories
 
 ### SSH Management
 - SSH key validation and permissions checking
@@ -76,7 +77,7 @@ BSD 3-Clause License - See [LICENSE](LICENSE) file for details.
 
 ## Related Projects
 
-This core library powers two complete implementations:
+This core library powers two complete implementations:f
 
 ### [CLI Version](https://github.com/smartlegionlab/smart-repository-manager-cli) 
 A full-featured command-line interface built on top of this core library. Provides terminal-based repository management with all features accessible via commands.
