@@ -1,5 +1,5 @@
 
-# Smart Repository Manager Core <sup>v0.3.2</sup>
+# Smart Repository Manager Core <sup>v0.3.3</sup>
 
 ---
 
