@@ -11,7 +11,6 @@ from smart_repository_manager_core.utils.validators import Validators
 
 
 class GitHubService:
-
     BASE_URL = "https://api.github.com"
 
     def __init__(self, token: str):
@@ -97,6 +96,10 @@ class GitHubService:
             for repo_data in unique_repos:
                 try:
                     repo = Repository.from_dict(repo_data)
+
+                    if not repo.clone_url and repo_data.get('clone_url'):
+                        repo.clone_url = repo_data.get('clone_url')
+
                     repositories.append(repo)
                 except Exception as e:
                     print(e)
