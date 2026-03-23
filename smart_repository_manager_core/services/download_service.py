@@ -3,6 +3,7 @@ import zipfile
 import subprocess
 import multiprocessing
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Dict, Any, Optional, Tuple
@@ -23,66 +24,120 @@ class DownloadService:
         except:
             self.max_workers = 4
 
-    def _download_with_curl(self, url: str, file_path: Path, timeout: int = 30, verbose: bool = False) -> bool:
+        self.max_retries = 5
+        self.retry_delay = 2
+        self.retry_backoff = 2
+        self.download_timeout = 50
+
+    def _cleanup_broken_archive(self, file_path: Path, verbose: bool = False) -> None:
         try:
-            if file_path.exists():
+            if file_path and file_path.exists():
                 file_path.unlink()
-
-            file_path.parent.mkdir(parents=True, exist_ok=True)
-
-            cmd = [
-                'curl',
-                '-L',
-                '-o', str(file_path),
-                '--connect-timeout', '30',
-                '--max-time', str(timeout),
-                '--retry', '3',
-                '--retry-delay', '5',
-            ]
-
-            if not verbose:
-                cmd.append('--silent')
-
-            cmd.append(url)
-
-            result = subprocess.run(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                timeout=timeout + 10
-            )
-
-            if result.returncode == 0:
-                if file_path.exists() and file_path.stat().st_size > 100:
-                    with open(file_path, 'rb') as f:
-                        header = f.read(4)
-                        if header == b'PK\x03\x04':
-                            return True
-                        else:
-                            if verbose:
-                                print(f"⚠️ File is not a valid ZIP: {file_path.name}")
-                            file_path.unlink()
-                            return False
-                else:
-                    if verbose:
-                        print(f"⚠️ Downloaded file is empty or missing")
-                    return False
-            else:
                 if verbose:
-                    print(f"⚠️ Download failed: {result.stderr}")
+                    print(f"🧹 Cleaned up broken archive: {file_path.name}")
+        except Exception as e:
+            if verbose:
+                print(f"⚠️ Failed to cleanup broken archive: {e}")
+
+    def _verify_zip(self, file_path: Path, verbose: bool = False) -> bool:
+        try:
+            if not file_path.exists():
                 return False
 
-        except subprocess.TimeoutExpired:
+            if file_path.stat().st_size < 100:
+                if verbose:
+                    print(f"⚠️ File too small: {file_path.stat().st_size} bytes")
+                return False
+
+            with open(file_path, 'rb') as f:
+                header = f.read(4)
+                if header != b'PK\x03\x04':
+                    if verbose:
+                        print(f"⚠️ Invalid ZIP signature: {header}")
+                    return False
+
+            with zipfile.ZipFile(file_path, 'r') as zip_ref:
+                if len(zip_ref.namelist()) == 0:
+                    if verbose:
+                        print(f"⚠️ ZIP archive is empty")
+                    return False
+
+                bad_file = zip_ref.testzip()
+                if bad_file:
+                    if verbose:
+                        print(f"⚠️ Corrupted file in ZIP: {bad_file}")
+                    return False
+
+            return True
+
+        except zipfile.BadZipFile:
             if verbose:
-                print(f"⏰ Download timeout")
+                print(f"⚠️ Bad ZIP file")
             return False
         except Exception as e:
             if verbose:
-                print(f"❌ Error downloading: {e}")
-            if file_path.exists():
-                file_path.unlink()
+                print(f"⚠️ ZIP verification failed: {e}")
             return False
+
+    def _download_with_curl(self, url: str, file_path: Path, timeout: int = 50, verbose: bool = False) -> bool:
+        for attempt in range(1, self.max_retries + 1):
+            try:
+                if file_path.exists():
+                    file_path.unlink()
+
+                file_path.parent.mkdir(parents=True, exist_ok=True)
+
+                cmd = [
+                    'curl',
+                    '-L',
+                    '-o', str(file_path),
+                    '--connect-timeout', '30',
+                    '--max-time', str(timeout),
+                    '--retry', '3',
+                    '--retry-delay', '5',
+                ]
+
+                if not verbose:
+                    cmd.append('--silent')
+
+                cmd.append(url)
+
+                result = subprocess.run(
+                    cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    timeout=timeout + 10
+                )
+
+                if result.returncode == 0:
+                    if self._verify_zip(file_path, verbose):
+                        return True
+                    else:
+                        self._cleanup_broken_archive(file_path, verbose)
+                        if verbose:
+                            print(f"⚠️ Attempt {attempt}/{self.max_retries}: Invalid ZIP file")
+                else:
+                    self._cleanup_broken_archive(file_path, verbose)
+                    if verbose:
+                        print(f"⚠️ Attempt {attempt}/{self.max_retries}: Download failed: {result.stderr}")
+
+            except subprocess.TimeoutExpired:
+                self._cleanup_broken_archive(file_path, verbose)
+                if verbose:
+                    print(f"⏰ Attempt {attempt}/{self.max_retries}: Download timeout")
+            except Exception as e:
+                self._cleanup_broken_archive(file_path, verbose)
+                if verbose:
+                    print(f"❌ Attempt {attempt}/{self.max_retries}: Error downloading: {e}")
+
+            if attempt < self.max_retries:
+                sleep_time = self.retry_delay * (self.retry_backoff ** (attempt - 1))
+                if verbose:
+                    print(f"⏳ Waiting {sleep_time}s before retry {attempt + 1}/{self.max_retries}...")
+                time.sleep(sleep_time)
+
+        return False
 
     def download_repository_zip(self,
                                 repo_name: str,
@@ -141,34 +196,35 @@ class DownloadService:
                 print(f"🎯 URL: {url}")
                 print(f"📁 Saving to: {filepath}")
 
-            success = self._download_with_curl(url, filepath, verbose=verbose)
+            success = self._download_with_curl(url, filepath, timeout=self.download_timeout, verbose=verbose)
 
-            if not success:
-                if branch == "main":
-                    if verbose:
-                        print(f"⚠️ Trying master branch for: {repo_name}")
+            if not success and branch == "main":
+                if verbose:
+                    print(f"⚠️ Trying master branch for: {repo_name}")
 
-                    if token:
-                        url = f"https://{token}@github.com/{full_repo_name}/archive/refs/heads/master.zip"
-                    else:
-                        url = f"https://github.com/{full_repo_name}/archive/refs/heads/master.zip"
+                if token:
+                    url = f"https://{token}@github.com/{full_repo_name}/archive/refs/heads/master.zip"
+                else:
+                    url = f"https://github.com/{full_repo_name}/archive/refs/heads/master.zip"
 
-                    success = self._download_with_curl(url, filepath, verbose=verbose)
+                filename = f"master_{visibility}_{timestamp}.zip"
+                filepath = base_dir / filename
+                success = self._download_with_curl(url, filepath, timeout=self.download_timeout, verbose=verbose)
 
-                    if success:
-                        branch = "master"
+                if success:
+                    branch = "master"
 
             if not success:
                 return {
                     "success": False,
-                    "error": f"Failed to download repository"
+                    "error": f"Failed to download repository after {self.max_retries} attempts"
                 }
 
             file_size = filepath.stat().st_size
 
             return {
                 "success": True,
-                "message": f"Repository downloaded successfully",
+                "message": f"Repository downloaded successfully after retries",
                 "filepath": str(filepath),
                 "filename": filename,
                 "size_bytes": file_size,
@@ -212,12 +268,12 @@ class DownloadService:
             filename = f"{branch_name}_{timestamp}.zip"
             filepath = branch_dir / filename
 
-            success = self._download_with_curl(url, filepath, verbose=verbose)
+            success = self._download_with_curl(url, filepath, timeout=self.download_timeout, verbose=verbose)
 
             if not success:
                 return branch_name, {
                     "success": False,
-                    "error": f"Failed to download branch {branch_name}"
+                    "error": f"Failed to download branch {branch_name} after {self.max_retries} attempts"
                 }
 
             file_size = filepath.stat().st_size
