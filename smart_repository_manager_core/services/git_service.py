@@ -5,18 +5,17 @@ from pathlib import Path
 from typing import Optional, Dict
 
 from smart_repository_manager_core.core.git_commands import GitCommandResult, GitOperationStatus
-from smart_repository_manager_core.core.git_operations import GitCloneOperation, GitPullOperation
-from smart_repository_manager_core.core.git_status import GitStatusChecker
+from smart_repository_manager_core.core.git_operations import GitCloneOperation, GitPullOperation, GitStatusOperation
 from smart_repository_manager_core.core.models.repository import Repository
 from smart_repository_manager_core.utils.validators import Validators
 
-
 class GitService:
 
-    def __init__(self, timeout: int = 30):
+    def __init__(self, token: Optional[str] = None, timeout: int = 30):
+        self.token = token
         self.timeout = timeout
 
-    def clone_repository(self, ssh_url: str, target_path: Path) -> GitCommandResult:
+    def clone_repository(self, clone_url: str, target_path: Path, token: Optional[str] = None) -> GitCommandResult:
         if not Validators.validate_path(target_path)[0]:
             return GitCommandResult(
                 success=False,
@@ -24,9 +23,9 @@ class GitService:
             )
 
         operation = GitCloneOperation(timeout=self.timeout)
-        return operation.execute(ssh_url, target_path)
+        return operation.execute(clone_url, target_path, token or self.token)
 
-    def pull_repository(self, repo_path: Path) -> GitCommandResult:
+    def pull_repository(self, repo_path: Path, token: Optional[str] = None) -> GitCommandResult:
         if not repo_path.exists() or not (repo_path / '.git').exists():
             return GitCommandResult(
                 success=False,
@@ -34,7 +33,7 @@ class GitService:
             )
 
         operation = GitPullOperation(timeout=self.timeout)
-        return operation.execute(repo_path)
+        return operation.execute(repo_path, token or self.token)
 
     def check_repository_status(self, repo: Repository, repo_path: Path) -> GitOperationStatus:
         status = GitOperationStatus(
@@ -48,28 +47,10 @@ class GitService:
             return status
 
         try:
-            check_result = subprocess.run(
-                ['git', '-C', str(repo_path), 'rev-parse', '--git-dir'],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                timeout=5
-            )
+            operation = GitStatusOperation(timeout=self.timeout)
+            needs_update, message = operation.check_needs_update(repo_path)
 
-            if check_result.returncode != 0:
-                status.message = "Repository corrupted"
-                status.success = False
-                return status
-
-            if repo.pushed_at:
-                needs_update = GitStatusChecker.needs_update(repo_path, repo.pushed_at)
-                if needs_update:
-                    status.message = "Needs update"
-                else:
-                    status.message = "Up to date"
-            else:
-                status.message = "Unknown remote status"
-
+            status.message = message
             status.success = True
             return status
 
@@ -147,4 +128,6 @@ class GitService:
             return False
 
     def verify_repository(self, repo_path: Path) -> bool:
-        return GitStatusChecker.repository_exists(repo_path)
+        operation = GitStatusOperation()
+        needs_update, _ = operation.check_needs_update(repo_path)
+        return not needs_update
