@@ -61,10 +61,11 @@ class SyncResult:
 
 class SyncService:
 
-    def __init__(self, timeout: int = 30, max_retries: int = 3):
+    def __init__(self, token: Optional[str] = None, timeout: int = 30, max_retries: int = 3):
+        self.token = token
         self.timeout = timeout
         self.max_retries = max_retries
-        self.git_service = GitService(timeout=timeout)
+        self.git_service = GitService(token=token, timeout=timeout)
         self.structure_service = StructureService()
         self._callbacks: Dict[str, List[Callable]] = {}
 
@@ -117,10 +118,12 @@ class SyncService:
             self._emit("health_check_completed", result.health_stats)
 
         for i, repo in enumerate(repositories):
-            if not repo.ssh_url:
+            clone_url = repo.clone_url or repo.html_url.replace("github.com", "github.com").rstrip('/') + '.git'
+
+            if not clone_url:
                 result.failed += 1
-                result.failed_repos[repo.name] = "No SSH URL"
-                self._emit("repo_failed", repo, "No SSH URL")
+                result.failed_repos[repo.name] = "No clone URL"
+                self._emit("repo_failed", repo, "No clone URL")
                 continue
 
             self._emit("repo_started", repo, i, result.total)
@@ -139,7 +142,7 @@ class SyncService:
                 continue
 
             success, message, attempts = self._execute_with_retries(
-                operation_type, repo.ssh_url, repo_path, repo.name, auto_repair
+                operation_type, clone_url, repo_path, repo.name, auto_repair
             )
 
             if success:
@@ -280,7 +283,7 @@ class SyncService:
     def _execute_with_retries(
             self,
             operation_type: str,
-            ssh_url: str,
+            clone_url: str,
             repo_path: Path,
             repo_name: str,
             auto_repair: bool
@@ -292,11 +295,11 @@ class SyncService:
 
             try:
                 if operation_type == "clone":
-                    success, message = self._execute_clone(ssh_url, repo_path)
+                    success, message = self._execute_clone(clone_url, repo_path)
                 elif operation_type == "pull":
                     success, message = self._execute_pull(repo_path)
                 elif operation_type == "repair":
-                    success, message = self._execute_repair(ssh_url, repo_path, repo_name)
+                    success, message = self._execute_repair(clone_url, repo_path, repo_name)
                 else:
                     return False, f"Unknown operation: {operation_type}", attempt
 
@@ -307,7 +310,7 @@ class SyncService:
 
                 if auto_repair and operation_type != "repair":
                     self._emit("auto_repair_triggered", repo_name)
-                    repair_success, repair_message = self._execute_repair(ssh_url, repo_path, repo_name)
+                    repair_success, repair_message = self._execute_repair(clone_url, repo_path, repo_name)
                     if repair_success:
                         return True, f"Auto-repaired: {repair_message}", attempt + 1
                     last_error = repair_message
@@ -323,8 +326,8 @@ class SyncService:
 
         return False, f"Failed after {self.max_retries} attempts: {last_error}", self.max_retries
 
-    def _execute_clone(self, ssh_url: str, repo_path: Path) -> Tuple[bool, str]:
-        result = self.git_service.clone_repository(ssh_url, repo_path)
+    def _execute_clone(self, clone_url: str, repo_path: Path) -> Tuple[bool, str]:
+        result = self.git_service.clone_repository(clone_url, repo_path, self.token)
 
         if result.success:
             if self._verify_repository_health(repo_path):
@@ -339,17 +342,19 @@ class SyncService:
         if not self._verify_repository_health(repo_path):
             return False, "Repository is unhealthy, cannot pull"
 
-        result = self.git_service.pull_repository(repo_path)
+        result = self.git_service.pull_repository(repo_path, self.token)
 
         if result.success:
             if self._verify_repository_health(repo_path):
+                if "Already up to date" in (result.message or ""):
+                    return True, "Already up to date"
                 return True, "Updated successfully"
             else:
                 return False, "Pull succeeded but repository became unhealthy"
 
         return False, result.error or "Pull failed"
 
-    def _execute_repair(self, ssh_url: str, repo_path: Path, repo_name: str) -> Tuple[bool, str]:
+    def _execute_repair(self, clone_url: str, repo_path: Path, repo_name: str) -> Tuple[bool, str]:
         self._emit("repair_started", repo_name)
 
         fix_success, fix_message = self._try_fix_repository(repo_path)
@@ -361,7 +366,7 @@ class SyncService:
 
         self._cleanup_repository(repo_path)
 
-        result = self.git_service.clone_repository(ssh_url, repo_path)
+        result = self.git_service.clone_repository(clone_url, repo_path, self.token)
 
         if result.success:
             if self._verify_repository_health(repo_path):
@@ -456,8 +461,10 @@ class SyncService:
             operation: str = "sync",
             auto_repair: bool = True
     ) -> Tuple[bool, str, float]:
-        if not repo.ssh_url:
-            return False, "No SSH URL", 0.0
+        clone_url = repo.clone_url or repo.html_url.replace("github.com", "github.com").rstrip('/') + '.git'
+
+        if not clone_url:
+            return False, "No clone URL", 0.0
 
         structure = self.structure_service.create_user_structure(user.username)
         if not structure:
@@ -474,7 +481,7 @@ class SyncService:
         start_time = time.time()
         success, message, attempts = self._execute_with_retries(
             operation_type,
-            repo.ssh_url,
+            clone_url,
             repo_path,
             repo.name,
             auto_repair
@@ -522,8 +529,9 @@ class SyncService:
         for repo in repositories:
             repo_path = repos_path / repo.name
 
-            if not repo.ssh_url:
-                results[repo.name] = (False, "No SSH URL")
+            clone_url = repo.clone_url or repo.html_url.replace("github.com", "github.com").rstrip('/') + '.git'
+            if not clone_url:
+                results[repo.name] = (False, "No clone URL")
                 continue
 
             if not repo_path.exists() or not (repo_path / '.git').exists():
