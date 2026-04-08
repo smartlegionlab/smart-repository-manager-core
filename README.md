@@ -115,18 +115,6 @@ Both implementations use this core library as their engine, ensuring consistent 
 
 ---
 
-## Disclaimer
-
-**Important**: This software is provided "as-is" without any warranties or guarantees. The developers are not responsible for:
-
-- Data loss or corruption
-- Repository damage or unintended modifications
-- Security breaches or token exposure
-- Network issues or connectivity problems
-- Any other direct or indirect damages
-
-**Use at your own risk**. Always maintain backups of your repositories and tokens. This project is in active development and may contain bugs or incomplete features.
-
 ## Development Status
 
 **Active Development** - This project is under active development. Features may change, and stability is not guaranteed. Not recommended for production use without thorough testing.
