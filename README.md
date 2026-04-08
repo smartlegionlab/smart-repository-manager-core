@@ -1,5 +1,5 @@
 
-# Smart Repository Manager Core <sup>v0.3.3</sup>
+# Smart Repository Manager Core <sup>v0.3.4</sup>
 
 ---
 
@@ -18,7 +18,17 @@ A Python library for managing Git repositories with intelligent synchronization 
 
 ---
 
-## ⚠️ Important Change: HTTP Migration
+## ⚠️ Disclaimer
+
+**By using this software, you agree to the full disclaimer terms.**
+
+**Summary:** Software provided "AS IS" without warranty. You assume all risks.
+
+**Full legal disclaimer:** See [DISCLAIMER.md](https://github.com/smartlegionlab/smart-repository-manager-core/blob/master/DISCLAIMER.md)
+
+---
+
+## Important Change: HTTP Migration
 
 **As of version 0.3.2, repository synchronization now uses HTTPS instead of SSH.**
 
@@ -64,7 +74,7 @@ pip install smart-repository-manager-core
 - User profile management
 - **HTTPS-based operations** (SSH no longer used)
 
-### SSH Management ⚠️
+### SSH Management
 - **Legacy feature - being phased out**
 - SSH key validation and permissions checking (maintained for backward compatibility)
 - SSH connection testing (will be removed in future versions)
@@ -119,7 +129,7 @@ Both implementations use this core library as their engine, ensuring consistent 
 
 ## Development Status
 
-⚠️ **Active Development** - This project is under active development. Features may change, and stability is not guaranteed. Not recommended for production use without thorough testing.
+**Active Development** - This project is under active development. Features may change, and stability is not guaranteed. Not recommended for production use without thorough testing.
 
 ## Migration Notes
 
