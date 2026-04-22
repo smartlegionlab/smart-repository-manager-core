@@ -62,8 +62,8 @@ class GitHubService:
                     "page": page,
                     "per_page": per_page,
                     "sort": "updated",
-                    "affiliation": "owner,collaborator,organization_member",
-                    "visibility": "all"
+                    "affiliation": "owner",
+                    "visibility": "all",
                 }
 
                 response = requests.get(
