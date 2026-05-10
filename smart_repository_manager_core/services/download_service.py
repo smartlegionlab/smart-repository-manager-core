@@ -6,7 +6,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Dict, Any, Optional, Tuple
+from typing import Dict, Any, Optional, Tuple, List
 from datetime import datetime
 from urllib.parse import urlparse
 
@@ -27,17 +27,17 @@ class DownloadService:
         self.max_retries = 5
         self.retry_delay = 2
         self.retry_backoff = 2
-        self.download_timeout = 50
+        self.download_timeout = 30
 
     def _cleanup_broken_archive(self, file_path: Path, verbose: bool = False) -> None:
         try:
             if file_path and file_path.exists():
                 file_path.unlink()
                 if verbose:
-                    print(f"🧹 Cleaned up broken archive: {file_path.name}")
+                    print(f"🧹 Cleaned up: {file_path.name}")
         except Exception as e:
             if verbose:
-                print(f"⚠️ Failed to cleanup broken archive: {e}")
+                print(f"⚠️ Cleanup failed: {e}")
 
     def _verify_zip(self, file_path: Path, verbose: bool = False) -> bool:
         try:
@@ -45,46 +45,83 @@ class DownloadService:
                 return False
 
             if file_path.stat().st_size < 100:
-                if verbose:
-                    print(f"⚠️ File too small: {file_path.stat().st_size} bytes")
                 return False
 
             with open(file_path, 'rb') as f:
                 header = f.read(4)
                 if header != b'PK\x03\x04':
-                    if verbose:
-                        print(f"⚠️ Invalid ZIP signature: {header}")
                     return False
 
             with zipfile.ZipFile(file_path, 'r') as zip_ref:
                 if len(zip_ref.namelist()) == 0:
-                    if verbose:
-                        print(f"⚠️ ZIP archive is empty")
                     return False
-
-                bad_file = zip_ref.testzip()
-                if bad_file:
-                    if verbose:
-                        print(f"⚠️ Corrupted file in ZIP: {bad_file}")
+                if zip_ref.testzip():
                     return False
 
             return True
-
-        except zipfile.BadZipFile:
-            if verbose:
-                print(f"⚠️ Bad ZIP file")
-            return False
-        except Exception as e:
-            if verbose:
-                print(f"⚠️ ZIP verification failed: {e}")
+        except:
             return False
 
-    def _download_with_curl(self, url: str, file_path: Path, timeout: int = 50, verbose: bool = False) -> bool:
+    def _get_branches_with_retry(self, owner: str, repo: str, token: Optional[str] = None, verbose: bool = False) -> \
+    Tuple[bool, List[str]]:
+        import requests
+
+        branches_url = f"https://api.github.com/repos/{owner}/{repo}/branches"
+        headers = {}
+        if token:
+            headers['Authorization'] = f'token {token}'
+
         for attempt in range(1, self.max_retries + 1):
             try:
-                if file_path.exists():
-                    file_path.unlink()
+                if verbose:
+                    print(f"📡 Fetching branches for {owner}/{repo} (attempt {attempt}/{self.max_retries})")
 
+                response = requests.get(branches_url, headers=headers, timeout=30)
+
+                if response.status_code == 200:
+                    branches_data = response.json()
+                    branches = [branch['name'] for branch in branches_data]
+                    if verbose:
+                        print(f"✅ Got {len(branches)} branches for {owner}/{repo}")
+                    return True, branches
+
+                elif response.status_code == 403:
+                    if verbose:
+                        print(f"⚠️ Rate limit hit for {owner}/{repo}, waiting 60s...")
+                    time.sleep(60)
+                    continue
+                else:
+                    if verbose:
+                        print(f"❌ HTTP {response.status_code} for {owner}/{repo}")
+
+            except requests.exceptions.Timeout:
+                if verbose:
+                    print(f"⏰ Timeout on attempt {attempt} for {owner}/{repo}")
+            except requests.exceptions.ConnectionError as e:
+                if verbose:
+                    print(f"🔌 Connection error on attempt {attempt}: {e}")
+            except Exception as e:
+                if verbose:
+                    print(f"❌ Error on attempt {attempt}: {e}")
+
+            if attempt < self.max_retries:
+                wait_time = self.retry_delay * (self.retry_backoff ** (attempt - 1))
+                if verbose:
+                    print(f"⏳ Waiting {wait_time}s before retry {attempt + 1}...")
+                time.sleep(wait_time)
+
+        return False, []
+
+    def _download_with_retry(self, url: str, file_path: Path, timeout: int = 30, verbose: bool = False) -> bool:
+
+        for attempt in range(1, self.max_retries + 1):
+            if file_path.exists():
+                try:
+                    file_path.unlink()
+                except:
+                    pass
+
+            try:
                 file_path.parent.mkdir(parents=True, exist_ok=True)
 
                 cmd = [
@@ -93,14 +130,17 @@ class DownloadService:
                     '-o', str(file_path),
                     '--connect-timeout', '30',
                     '--max-time', str(timeout),
-                    '--retry', '3',
-                    '--retry-delay', '5',
+                    '--fail',
+                    '--location',
                 ]
 
                 if not verbose:
                     cmd.append('--silent')
 
                 cmd.append(url)
+
+                if verbose:
+                    print(f"📥 Attempt {attempt}/{self.max_retries}: {file_path.name}")
 
                 result = subprocess.run(
                     cmd,
@@ -110,33 +150,32 @@ class DownloadService:
                     timeout=timeout + 10
                 )
 
-                if result.returncode == 0:
-                    if self._verify_zip(file_path, verbose):
-                        return True
-                    else:
-                        self._cleanup_broken_archive(file_path, verbose)
-                        if verbose:
-                            print(f"⚠️ Attempt {attempt}/{self.max_retries}: Invalid ZIP file")
+                if result.returncode == 0 and file_path.exists() and self._verify_zip(file_path, verbose):
+                    if verbose:
+                        print(f"✅ Attempt {attempt}: OK")
+                    return True
                 else:
                     self._cleanup_broken_archive(file_path, verbose)
                     if verbose:
-                        print(f"⚠️ Attempt {attempt}/{self.max_retries}: Download failed: {result.stderr}")
+                        print(f"❌ Attempt {attempt}: Failed")
 
             except subprocess.TimeoutExpired:
                 self._cleanup_broken_archive(file_path, verbose)
                 if verbose:
-                    print(f"⏰ Attempt {attempt}/{self.max_retries}: Download timeout")
+                    print(f"⏰ Attempt {attempt}: Timeout")
             except Exception as e:
                 self._cleanup_broken_archive(file_path, verbose)
                 if verbose:
-                    print(f"❌ Attempt {attempt}/{self.max_retries}: Error downloading: {e}")
+                    print(f"❌ Attempt {attempt}: Error - {e}")
 
             if attempt < self.max_retries:
-                sleep_time = self.retry_delay * (self.retry_backoff ** (attempt - 1))
+                wait_time = self.retry_delay * (self.retry_backoff ** (attempt - 1))
                 if verbose:
-                    print(f"⏳ Waiting {sleep_time}s before retry {attempt + 1}/{self.max_retries}...")
-                time.sleep(sleep_time)
+                    print(f"⏳ Waiting {wait_time}s...")
+                time.sleep(wait_time)
 
+        if verbose:
+            print(f"💀 All {self.max_retries} attempts failed for {file_path.name}")
         return False
 
     def download_repository_zip(self,
@@ -159,18 +198,11 @@ class DownloadService:
 
             owner = path_parts[0]
             repo = path_parts[1]
+            full_repo_name = f"{owner}/{repo}"
 
             is_private = False
             if hasattr(self, 'repository') and self.repository and hasattr(self.repository, 'private'):
                 is_private = self.repository.private
-
-            if is_private and not token:
-                return {
-                    "success": False,
-                    "error": "Token required for private repository"
-                }
-
-            full_repo_name = f"{owner}/{repo}"
 
             if token:
                 url = f"https://{token}@github.com/{full_repo_name}/archive/refs/heads/{branch}.zip"
@@ -193,14 +225,14 @@ class DownloadService:
             filepath = base_dir / filename
 
             if verbose:
-                print(f"🎯 URL: {url}")
-                print(f"📁 Saving to: {filepath}")
+                print(f"\n🎯 Downloading: {repo_name}")
+                print(f"📁 Target: {filepath}")
 
-            success = self._download_with_curl(url, filepath, timeout=self.download_timeout, verbose=verbose)
+            success = self._download_with_retry(url, filepath, timeout=self.download_timeout, verbose=verbose)
 
             if not success and branch == "main":
                 if verbose:
-                    print(f"⚠️ Trying master branch for: {repo_name}")
+                    print(f"\n🔄 Retrying with master branch...")
 
                 if token:
                     url = f"https://{token}@github.com/{full_repo_name}/archive/refs/heads/master.zip"
@@ -209,22 +241,24 @@ class DownloadService:
 
                 filename = f"master_{visibility}_{timestamp}.zip"
                 filepath = base_dir / filename
-                success = self._download_with_curl(url, filepath, timeout=self.download_timeout, verbose=verbose)
+                success = self._download_with_retry(url, filepath, timeout=self.download_timeout, verbose=verbose)
 
                 if success:
                     branch = "master"
 
             if not success:
+                if filepath.exists():
+                    self._cleanup_broken_archive(filepath, verbose)
                 return {
                     "success": False,
-                    "error": f"Failed to download repository after {self.max_retries} attempts"
+                    "error": f"Failed after {self.max_retries} attempts"
                 }
 
             file_size = filepath.stat().st_size
 
             return {
                 "success": True,
-                "message": f"Repository downloaded successfully after retries",
+                "message": "Downloaded successfully",
                 "filepath": str(filepath),
                 "filename": filename,
                 "size_bytes": file_size,
@@ -268,12 +302,12 @@ class DownloadService:
             filename = f"{branch_name}_{timestamp}.zip"
             filepath = branch_dir / filename
 
-            success = self._download_with_curl(url, filepath, timeout=self.download_timeout, verbose=verbose)
+            success = self._download_with_retry(url, filepath, timeout=self.download_timeout, verbose=verbose)
 
             if not success:
                 return branch_name, {
                     "success": False,
-                    "error": f"Failed to download branch {branch_name} after {self.max_retries} attempts"
+                    "error": f"Failed after {self.max_retries} attempts"
                 }
 
             file_size = filepath.stat().st_size
@@ -324,23 +358,12 @@ class DownloadService:
                     "error": "Token required for private repository"
                 }
 
-            import requests
-
-            branches_url = f"https://api.github.com/repos/{owner}/{repo}/branches"
-            headers = {}
-            if token:
-                headers['Authorization'] = f'token {token}'
-
-            response = requests.get(branches_url, headers=headers, timeout=10)
-
-            if response.status_code != 200:
+            success, branches = self._get_branches_with_retry(owner, repo, token, verbose)
+            if not success:
                 return {
                     "success": False,
-                    "error": f"Failed to get branches: HTTP {response.status_code}"
+                    "error": f"Failed to get branches for {owner}/{repo} after {self.max_retries} attempts"
                 }
-
-            branches_data = response.json()
-            branches = [branch['name'] for branch in branches_data]
 
             if not branches:
                 return {
@@ -362,7 +385,7 @@ class DownloadService:
             workers = min(workers, len(branches))
 
             if verbose:
-                print(f"🚀 Starting parallel download of {len(branches)} branches using {workers} workers")
+                print(f"🚀 Parallel download of {len(branches)} branches using {workers} workers")
 
             results = []
             successful = 0
@@ -398,11 +421,11 @@ class DownloadService:
                         if result.get('success'):
                             successful += 1
                             if verbose:
-                                print(f"✅ Downloaded branch: {branch_name}")
+                                print(f"✅ Branch: {branch_name}")
                         else:
                             failed += 1
                             if verbose:
-                                print(f"❌ Failed branch: {branch_name} - {result.get('error', 'Unknown error')}")
+                                print(f"❌ Branch: {branch_name} - {result.get('error', 'Unknown')}")
 
             results.sort(key=lambda x: x['branch'])
 
@@ -414,7 +437,7 @@ class DownloadService:
 
             return {
                 "success": successful > 0,
-                "message": f"Downloaded {successful}/{len(branches)} branches using {workers} workers",
+                "message": f"Downloaded {successful}/{len(branches)} branches",
                 "total_branches": len(branches),
                 "successful": successful,
                 "failed": failed,
