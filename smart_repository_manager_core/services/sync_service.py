@@ -357,11 +357,6 @@ class SyncService:
     def _execute_repair(self, clone_url: str, repo_path: Path, repo_name: str) -> Tuple[bool, str]:
         self._emit("repair_started", repo_name)
 
-        fix_success, fix_message = self._try_fix_repository(repo_path)
-        if fix_success:
-            self._emit("repair_fixed", repo_name, fix_message)
-            return True, f"Fixed: {fix_message}"
-
         self._emit("repair_recloning", repo_name)
 
         self._cleanup_repository(repo_path)
