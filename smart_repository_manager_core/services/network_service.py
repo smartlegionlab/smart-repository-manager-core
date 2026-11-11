@@ -6,6 +6,8 @@ from typing import Dict, Any, Tuple, List, Optional
 from urllib.parse import urlparse
 from datetime import datetime
 
+from smart_repository_manager_core import __version__
+
 
 class NetworkCheckResult:
 
@@ -190,7 +192,7 @@ class NetworkService:
             response = requests.get(
                 server["url"],
                 timeout=self.timeout,
-                headers={"User-Agent": "SmartGitCore/1.0.0"}
+                headers={"User-Agent": f"smart-repository-manager-core/{__version__}"}
             )
 
             duration = (datetime.now() - start_time).total_seconds()

@@ -7,7 +7,7 @@ from typing import Dict, List, Optional
 @dataclass
 class AppConfig:
     app_name: str = "Smart Repository Manager"
-    version: str = "1.0.0"
+    version: str = "1.0.1"
     last_launch: Optional[str] = None
     active_user: Optional[str] = None
     users: Dict[str, str] = field(default_factory=dict)
@@ -16,7 +16,7 @@ class AppConfig:
         if self.last_launch is None:
             self.last_launch = datetime.now().isoformat()
 
-    def set_version(self, version: str = "1.0.0"):
+    def set_version(self, version: str = "1.0.1"):
         self.version = str(version)
 
     def add_user(self, username: str, token: str) -> None:
@@ -57,7 +57,7 @@ class AppConfig:
     def from_dict(cls, data: Dict) -> 'AppConfig':
         return cls(
             app_name=data.get("app_name", "Smart Repository Manager"),
-            version=data.get("version", "1.0.0"),
+            version=data.get("version", "1.0.1"),
             last_launch=data.get("last_launch"),
             active_user=data.get("active_user"),
             users=data.get("users", {})
