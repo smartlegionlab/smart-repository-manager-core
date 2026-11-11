@@ -1,5 +1,6 @@
 # Copyright (©) 2026, Alexander Suvorov. All rights reserved.
 import os
+import re
 import shutil
 import subprocess
 import signal
@@ -292,16 +293,30 @@ class GitPullOperation(GitOperation):
                 return False
 
             current_url = result.stdout.strip()
+            if not current_url:
+                return False
 
-            if current_url.startswith('https://') and 'oauth2:' not in current_url:
-                auth_url = current_url.replace('https://', f'https://oauth2:{token}@')
+            if not current_url.startswith('https://'):
+                return False
 
-                subprocess.run(
-                    ['git', '-C', str(repo_path), 'remote', 'set-url', 'origin', auth_url],
-                    check=False,
-                    timeout=5
-                )
+            clean_url = re.sub(r'^https://[^@/]+@', 'https://', current_url)
+
+            auth_url = clean_url.replace(
+                'https://',
+                f'https://oauth2:{token}@',
+                1
+            )
+
+            if auth_url == current_url:
                 return True
+
+            subprocess.run(
+                ['git', '-C', str(repo_path), 'remote', 'set-url', 'origin', auth_url],
+                check=False,
+                timeout=5,
+                capture_output=True
+            )
+            return True
 
         except Exception as e:
             print(f"Warning: Failed to update remote URL: {e}")

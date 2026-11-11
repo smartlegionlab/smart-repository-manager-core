@@ -2,7 +2,7 @@
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple
 
 
 class GitStatusChecker:
@@ -41,14 +41,14 @@ class GitStatusChecker:
             return None
 
     @staticmethod
-    def needs_update(repo_path: Path, github_pushed_at: str) -> bool:
+    def needs_update_detailed(repo_path: Path, github_pushed_at: str) -> Tuple[bool, str]:
         try:
             if not repo_path.exists() or not (repo_path / '.git').exists():
-                return True
+                return True, "not_exists"
 
             local_date = GitStatusChecker.get_local_commit_date(repo_path)
             if not local_date:
-                return True
+                return True, "no_local_commit"
 
             github_date = datetime.fromisoformat(github_pushed_at.replace('Z', '+00:00'))
 
@@ -63,7 +63,7 @@ class GitStatusChecker:
             diff_seconds = time_diff.total_seconds()
 
             if diff_seconds <= 300:
-                return False
+                return False, "up_to_date"
 
             remote_result = subprocess.run(
                 ['git', '-C', str(repo_path), 'ls-remote', 'origin', 'HEAD'],
@@ -74,11 +74,23 @@ class GitStatusChecker:
             )
 
             if remote_result.returncode != 0:
-                return True
+                err = (remote_result.stderr or '').lower()
+                auth_markers = (
+                    '403',
+                    '401',
+                    'authentication failed',
+                    'permission denied',
+                    'could not read',
+                    'invalid username or password',
+                    'repository not found',
+                )
+                if any(marker in err for marker in auth_markers):
+                    return False, "auth_error"
+                return False, f"network_error: {remote_result.stderr[:80]}"
 
             remote_data = remote_result.stdout.strip()
             if not remote_data:
-                return True
+                return False, "ls_remote_empty"
 
             remote_hash = remote_data.split()[0]
 
@@ -91,14 +103,25 @@ class GitStatusChecker:
             )
 
             if local_hash_result.returncode != 0:
-                return True
+                return False, "rev_parse_failed"
 
             local_hash = local_hash_result.stdout.strip()
 
-            return local_hash != remote_hash
+            if local_hash != remote_hash:
+                return True, "behind_remote"
+            return False, "up_to_date"
 
-        except Exception:
-            return True
+        except subprocess.TimeoutExpired:
+            return False, "timeout"
+        except Exception as e:
+            return False, f"exception: {str(e)[:80]}"
+
+    @staticmethod
+    def needs_update(repo_path: Path, github_pushed_at: str) -> bool:
+        needs, _reason = GitStatusChecker.needs_update_detailed(
+            repo_path, github_pushed_at
+        )
+        return needs
 
     @staticmethod
     def repository_exists(repo_path: Path) -> bool:

@@ -496,7 +496,7 @@ class SyncService:
             repo: Repository
     ) -> Tuple[bool, str]:
         results = self._batch_check_needs_update_internal(user, [repo])
-        return results.get(repo.name, (True, "Error checking"))
+        return results.get(repo.name, (False, "not_checked"))
 
     def batch_check_repositories_need_update(
             self,
@@ -515,7 +515,7 @@ class SyncService:
 
         structure = self.structure_service.get_user_structure(user.username)
         if "repositories" not in structure:
-            return {repo.name: (True, "Directory structure not found") for repo in repositories}
+            return {repo.name: (False, "structure_not_found") for repo in repositories}
 
         repos_path = structure["repositories"]
         results = {}
@@ -526,15 +526,15 @@ class SyncService:
 
             clone_url = repo.clone_url or repo.html_url.replace("github.com", "github.com").rstrip('/') + '.git'
             if not clone_url:
-                results[repo.name] = (False, "No clone URL")
+                results[repo.name] = (False, "no_clone_url")
                 continue
 
             if not repo_path.exists() or not (repo_path / '.git').exists():
-                results[repo.name] = (True, "Repository not found locally")
+                results[repo.name] = (True, "not_exists")
                 continue
 
             if not repo.pushed_at:
-                results[repo.name] = (False, "Unknown remote status")
+                results[repo.name] = (False, "unknown_remote_status")
                 continue
 
             repos_to_check.append((repo, repo_path))
@@ -547,7 +547,7 @@ class SyncService:
 
             for repo, repo_path in repos_to_check:
                 future = executor.submit(
-                    GitStatusChecker.needs_update,
+                    GitStatusChecker.needs_update_detailed,
                     repo_path,
                     repo.pushed_at
                 )
@@ -556,15 +556,14 @@ class SyncService:
             for future in concurrent.futures.as_completed(future_to_repo):
                 repo_name = future_to_repo[future]
                 try:
-                    needs_update = future.result(timeout=30)
+                    needs_update, reason = future.result(timeout=30)
+                    results[repo_name] = (needs_update, reason)
 
-                    if needs_update:
-                        results[repo_name] = (True, "Update needed")
-                    else:
-                        results[repo_name] = (False, "Up to date")
+                except concurrent.futures.TimeoutError:
+                    results[repo_name] = (False, "timeout")
 
                 except Exception as e:
-                    results[repo_name] = (True, f"Check failed: {str(e)}")
+                    results[repo_name] = (False, f"check_error: {str(e)[:80]}")
 
         return results
 
